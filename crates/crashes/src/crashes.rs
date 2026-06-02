@@ -1,5 +1,7 @@
+#[cfg(not(target_os = "freebsd"))]
 use crash_handler::{CrashEventResult, CrashHandler};
 use log::info;
+#[cfg(not(target_os = "freebsd"))]
 use minidumper::{LoopAction, MinidumpBinary, Server, SocketName};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -21,7 +23,11 @@ use std::{
     time::Duration,
 };
 
+#[cfg(not(target_os = "freebsd"))]
 pub use minidumper::Client;
+
+#[cfg(target_os = "freebsd")]
+pub struct Client;
 
 const CRASH_HANDLER_PING_TIMEOUT: Duration = Duration::from_secs(60);
 const CRASH_HANDLER_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -44,6 +50,7 @@ pub fn force_backtrace() {
 /// The synchronous portion (signal handlers, panic hook) runs inline.
 /// The async keepalive task is passed to `spawn` so the caller decides
 /// which executor to schedule it on.
+#[cfg(not(target_os = "freebsd"))]
 pub fn init<F, S, C, P>(
     crash_init: InitCrashHandler,
     spawn: S,
@@ -59,8 +66,25 @@ where
     connect_and_keepalive(crash_init, socket_path, wait_timer, spawn)
 }
 
+#[cfg(target_os = "freebsd")]
+pub fn init<F, S, C, P>(
+    _crash_init: InitCrashHandler,
+    _spawn: S,
+    _socket_path: P,
+    _wait_timer: C,
+) -> impl std::future::Future<Output = Arc<Client>>
+where
+    F: std::future::Future<Output = ()> + Send + Sync + 'static,
+    C: (Fn(Duration) -> F) + Send + Sync + 'static,
+    S: FnOnce(Pin<Box<dyn std::future::Future<Output = ()> + Send + 'static>>),
+    P: FnOnce(u32) -> PathBuf,
+{
+    async { Arc::new(Client) }
+}
+
 /// Spawn the crash-handler subprocess, connect the IPC client, and run the
 /// keepalive ping loop. Called on a background executor by [`init`].
+#[cfg(not(target_os = "freebsd"))]
 fn connect_and_keepalive<F, C, S, P>(
     crash_init: InitCrashHandler,
     socket_path: P,
@@ -166,6 +190,7 @@ where
     }
 }
 
+#[cfg(not(target_os = "freebsd"))]
 pub struct CrashServer {
     initialization_params: Mutex<Option<InitCrashHandler>>,
     panic_info: Mutex<Option<CrashPanic>>,
@@ -206,6 +231,7 @@ pub struct UserInfo {
     pub is_staff: Option<bool>,
 }
 
+#[cfg(not(target_os = "freebsd"))]
 fn send_crash_server_message(crash_client: &Arc<Client>, message: CrashServerMessage) {
     let data = match serde_json::to_vec(&message) {
         Ok(data) => data,
@@ -220,14 +246,23 @@ fn send_crash_server_message(crash_client: &Arc<Client>, message: CrashServerMes
     }
 }
 
+#[cfg(not(target_os = "freebsd"))]
 pub fn set_gpu_info(crash_client: &Arc<Client>, specs: GpuSpecs) {
     send_crash_server_message(crash_client, CrashServerMessage::GPUInfo(specs));
 }
 
+#[cfg(target_os = "freebsd")]
+pub fn set_gpu_info(_crash_client: &Arc<Client>, _specs: GpuSpecs) {}
+
+#[cfg(not(target_os = "freebsd"))]
 pub fn set_user_info(crash_client: &Arc<Client>, info: UserInfo) {
     send_crash_server_message(crash_client, CrashServerMessage::UserInfo(info));
 }
 
+#[cfg(target_os = "freebsd")]
+pub fn set_user_info(_crash_client: &Arc<Client>, _info: UserInfo) {}
+
+#[cfg(not(target_os = "freebsd"))]
 #[derive(Serialize, Deserialize, Debug)]
 enum CrashServerMessage {
     Init(InitCrashHandler),
@@ -236,6 +271,7 @@ enum CrashServerMessage {
     UserInfo(UserInfo),
 }
 
+#[cfg(not(target_os = "freebsd"))]
 impl minidumper::ServerHandler for CrashServer {
     fn create_minidump_file(&self) -> Result<(File, PathBuf), io::Error> {
         let dump_path = self
@@ -360,6 +396,7 @@ fn strip_user_string_from_panic(message: &str) -> String {
     message.to_owned()
 }
 
+#[cfg(not(target_os = "freebsd"))]
 pub fn panic_hook(crash_client: Arc<Client>, message: &str, location: Option<&Location>) {
     let message = strip_user_string_from_panic(message);
 
@@ -391,6 +428,9 @@ pub fn panic_hook(crash_client: Arc<Client>, message: &str, location: Option<&Lo
         std::process::abort();
     }
 }
+
+#[cfg(target_os = "freebsd")]
+pub fn panic_hook(_crash_client: Arc<Client>, _message: &str, _location: Option<&Location>) {}
 
 #[cfg(target_os = "macos")]
 mod macos {
@@ -435,7 +475,8 @@ mod macos {
         }
     }
 }
-#[cfg(not(target_os = "windows"))]
+
+#[cfg(not(any(windows, target_os = "freebsd")))]
 fn spawn_crash_handler(exe: &Path, socket_name: &Path) -> async_process::Child {
     async_process::Command::new(exe)
         .arg("--crash-handler")
@@ -495,6 +536,7 @@ fn spawn_crash_handler(exe: &Path, socket_name: &Path) {
     }
 }
 
+#[cfg(not(target_os = "freebsd"))]
 pub fn crash_server(socket: &Path, logs_dir: PathBuf) {
     let Ok(mut server) = Server::with_name(SocketName::Path(socket)) else {
         log::info!("Couldn't create socket, there may already be a running crash server");
@@ -533,3 +575,6 @@ pub fn crash_server(socket: &Path, logs_dir: PathBuf) {
         )
         .expect("failed to run server");
 }
+
+#[cfg(target_os = "freebsd")]
+pub fn crash_server(_socket: &Path, _logs_dir: PathBuf) {}
