@@ -105,7 +105,7 @@ impl Watcher for FsWatcher {
                 path.ancestors().skip(1).any(|ancestor| {
                     registrations.get(ancestor).is_some_and(|registration| {
                         registration.mode == WatcherMode::Poll
-                            || cfg!(any(target_os = "windows", target_os = "macos", target_os = "freebsd"))
+                            || cfg!(any(target_os = "windows", target_os = "macos"))
                     })
                 }),
                 registrations.contains_key(path),
@@ -168,12 +168,24 @@ pub fn requires_poll_watcher(path: &Path) -> bool {
         _ => {}
     }
 
+    // FreeBSD's native backend is kqueue, which has no real recursive mode:
+    // `notify` emulates it by opening a file descriptor per file, which exhausts
+    // the process fd limit on real trees, and kqueue reports that as a generic IO
+    // error (not `MaxFilesWatch`), so the fd-limit fallback never triggers. Poll
+    // watching is reliable here and detects file content changes (which a
+    // non-recursive kqueue directory watch does not).
+    #[cfg(target_os = "freebsd")]
+    {
+        let _ = path;
+        return true;
+    }
+
     #[cfg(target_os = "linux")]
     {
         return detect_requires_poll_watcher_linux(path);
     }
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
     {
         let _ = path;
         false
@@ -684,7 +696,7 @@ impl GlobalWatcher {
                     .expect("native watcher initialized")
                     .watch(
                         path,
-                        if cfg!(any(target_os = "windows", target_os = "macos", target_os = "freebsd")) {
+                        if cfg!(any(target_os = "windows", target_os = "macos")) {
                             notify::RecursiveMode::Recursive
                         } else {
                             notify::RecursiveMode::NonRecursive
@@ -748,7 +760,7 @@ fn path_already_covered(
     path_registrations: &HashMap<Arc<std::path::Path>, PathRegistrationState>,
     mode: WatcherMode,
 ) -> bool {
-    (mode == WatcherMode::Poll || cfg!(any(target_os = "windows", target_os = "macos", target_os = "freebsd")))
+    (mode == WatcherMode::Poll || cfg!(any(target_os = "windows", target_os = "macos")))
         && path
             .ancestors()
             .skip(1)
