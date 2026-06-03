@@ -45,7 +45,7 @@ fn parse_platform(output: &str) -> Result<RemotePlatform> {
         || arch.starts_with("aarch64")
     {
         RemoteArch::Aarch64
-    } else if arch.starts_with("x86") {
+    } else if arch.starts_with("x86") || arch == "amd64" {
         RemoteArch::X86_64
     } else {
         anyhow::bail!(
@@ -443,6 +443,14 @@ mod tests {
         .unwrap();
         assert_eq!(result.os, RemoteOs::Linux);
         assert_eq!(result.arch, RemoteArch::X86_64);
+
+        let result = parse_platform("FreeBSD amd64\n").unwrap();
+        assert_eq!(result.os, RemoteOs::FreeBsd);
+        assert_eq!(result.arch, RemoteArch::X86_64);
+
+        let result = parse_platform("FreeBSD aarch64\n").unwrap();
+        assert_eq!(result.os, RemoteOs::FreeBsd);
+        assert_eq!(result.arch, RemoteArch::Aarch64);
 
         assert!(parse_platform("Windows x86_64\n").is_err());
         assert!(parse_platform("Linux armv7l\n").is_err());
