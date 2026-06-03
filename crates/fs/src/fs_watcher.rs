@@ -105,7 +105,7 @@ impl Watcher for FsWatcher {
                 path.ancestors().skip(1).any(|ancestor| {
                     registrations.get(ancestor).is_some_and(|registration| {
                         registration.mode == WatcherMode::Poll
-                            || cfg!(any(target_os = "windows", target_os = "macos"))
+                            || cfg!(any(target_os = "windows", target_os = "macos", target_os = "freebsd"))
                     })
                 }),
                 registrations.contains_key(path),
@@ -684,7 +684,7 @@ impl GlobalWatcher {
                     .expect("native watcher initialized")
                     .watch(
                         path,
-                        if cfg!(any(target_os = "windows", target_os = "macos")) {
+                        if cfg!(any(target_os = "windows", target_os = "macos", target_os = "freebsd")) {
                             notify::RecursiveMode::Recursive
                         } else {
                             notify::RecursiveMode::NonRecursive
@@ -748,7 +748,7 @@ fn path_already_covered(
     path_registrations: &HashMap<Arc<std::path::Path>, PathRegistrationState>,
     mode: WatcherMode,
 ) -> bool {
-    (mode == WatcherMode::Poll || cfg!(any(target_os = "windows", target_os = "macos")))
+    (mode == WatcherMode::Poll || cfg!(any(target_os = "windows", target_os = "macos", target_os = "freebsd")))
         && path
             .ancestors()
             .skip(1)
