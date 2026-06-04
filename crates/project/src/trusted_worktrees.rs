@@ -443,6 +443,18 @@ impl TrustedWorktreesStore {
             }
         }
 
+        // A restriction can arrive from an upstream host (e.g. a remote server) that evaluates
+        // trust on its own, with its own settings. When this workspace has opted into trusting
+        // all worktrees, answer the restriction immediately by trusting it and notifying the
+        // host; otherwise host-side features such as language servers stay blocked forever,
+        // since `auto_trust_all` only reacts to settings *changes*, not to incoming restrictions.
+        if ProjectSettings::get_global(cx).session.trust_all_worktrees
+            && let Some(worktree_store) = worktree_store.upgrade()
+        {
+            self.trust(&worktree_store, restricted, cx);
+            return;
+        }
+
         cx.emit(TrustedWorktreesEvent::Restricted(
             worktree_store,
             restricted,
