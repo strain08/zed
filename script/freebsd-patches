@@ -106,12 +106,18 @@ EOF
     echo "==> tagged $build_tag"
   fi
 
+  local build_hint
+  case "$(uname -s)" in
+    FreeBSD) build_hint='cargo build --release -p remote_server  # zed-remote-server only' ;;
+    *)       build_hint='cargo run --release                     # Zed editor (client)' ;;
+  esac
+
   cat <<EOF
 
 OK: $tag + FreeBSD series applied.
   worktree: $into
   tag:      ${build_tag}$([ "$want_tag" = 1 ] || echo ' (skipped)')
-  build:    cd "$into" && cargo build --release   # or your FreeBSD build step
+  next:     cd "$into" && $build_hint
 EOF
 }
 
