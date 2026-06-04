@@ -18,20 +18,24 @@ set -euo pipefail
 repo_root="$(git rev-parse --show-toplevel)"
 patch_dir="$repo_root/freebsd/patches"
 base_file="$repo_root/freebsd/upstream-base"
+upstream_url="https://github.com/zed-industries/zed.git"
 
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 have_patches() { compgen -G "$patch_dir/*.patch" >/dev/null 2>&1; }
 
-# Resolve a ref to a commit, fetching the tag from origin if it is not present.
+# Resolve a ref to a commit. If it is not present locally, try origin (the
+# fork), then fall back to upstream Zed — release tags live upstream, and a
+# fork clone usually does not carry them.
 resolve_ref() {
   local ref="$1"
   if git rev-parse --verify --quiet "${ref}^{commit}" >/dev/null; then
     return 0
   fi
-  echo "ref '$ref' not found locally; fetching from origin..." >&2
-  git fetch --quiet origin "tag" "$ref" 2>/dev/null \
-    || git fetch --quiet origin "$ref" 2>/dev/null \
-    || die "could not resolve '$ref' (not a local ref or origin tag)"
+  echo "ref '$ref' not found locally; fetching..." >&2
+  git fetch --quiet origin "tag" "$ref" 2>/dev/null && return 0
+  git fetch --quiet origin "$ref" 2>/dev/null && return 0
+  git fetch --quiet "$upstream_url" "tag" "$ref" 2>/dev/null && return 0
+  die "could not resolve '$ref' (not a local ref, origin tag, or upstream Zed tag)"
 }
 
 cmd_list() {
