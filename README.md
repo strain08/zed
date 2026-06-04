@@ -84,15 +84,21 @@ cd zed
 script/freebsd-patches apply v1.5.3      # ← latest upstream tag
 cd ../zed-freebsd-build/v1.5.3
 script/freebsd                           # installs deps + rustup
-cargo build --release -p remote_server   # → target/release/zed-remote-server
+cargo build --release -p remote_server   # → target/release/remote_server
 ```
 
 ## Connect client → FreeBSD host
 
-Zed has no prebuilt FreeBSD server to download, so point it at the one you just built — either:
+Zed has no prebuilt FreeBSD server to download, so point it at the `remote_server` binary you just built. Easiest — let the client name and upload it:
 
-- set `ZED_COPY_REMOTE_SERVER=/path/to/zed-remote-server` before launching the client (needs a debug client or the `build-remote-server-binary` feature), **or**
-- drop the `zed-remote-server` binary into `~/.zed_server/` on the FreeBSD host.
+- set `ZED_COPY_REMOTE_SERVER=/path/to/target/release/remote_server` before launching the client (needs a debug client or the `build-remote-server-binary` feature).
+
+Or place it on the host by hand — the client looks for a versioned name in `~/.zed_server/`:
+
+```sh
+# on the FreeBSD host; <channel> is stable|preview|nightly, <version> the client's version
+cp target/release/remote_server ~/.zed_server/zed-remote-server-<channel>-<version>
+```
 
 Then in the client: **Remote Projects → connect over SSH** to `user@freebsd-host` and open a folder.
 
