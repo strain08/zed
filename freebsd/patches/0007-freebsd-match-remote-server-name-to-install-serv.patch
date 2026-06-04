@@ -1,0 +1,47 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: strain08 <strain08@gmail.com>
+Date: Thu, 4 Jun 2026 12:00:00 +0300
+Subject: [PATCH 7/7] freebsd: match remote-server name to install-server
+
+A stable/preview client builds the remote-server filename it looks for
+from version.to_string(), which includes semver build metadata such as
+"1.5.3+stable.<sha>" (the commit sha is injected by crates/zed/build.rs).
+That never matches the name script/freebsd-patches install-server writes
+(zed-remote-server-stable-1.5.3), so the on-host binary check fails and
+the client falls back to fetching a FreeBSD release that does not exist,
+surfacing as: failed to fetch release: "bad request. Need `asset`, `os`,
+`arch`".
+
+Strip pre-release/build metadata when forming the name, mirroring the
+normalization auto_update already applies in get_release_asset. The
+expected binary becomes zed-remote-server-<channel>-<version>, which is
+stable across rebuilds and matches the install-server output.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+---
+ crates/remote/src/transport/ssh.rs | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/crates/remote/src/transport/ssh.rs b/crates/remote/src/transport/ssh.rs
+index 1a8337dcd7..0fa39ffc0c 100644
+--- a/crates/remote/src/transport/ssh.rs
++++ b/crates/remote/src/transport/ssh.rs
+@@ -791,7 +791,17 @@ impl SshRemoteConnection {
+     ) -> Result<Arc<RelPath>> {
+         let version_str = match release_channel {
+             ReleaseChannel::Dev => "build".to_string(),
+-            _ => version.to_string(),
++            _ => {
++                // Strip pre-release/build metadata (e.g. "+stable.<sha>") so the
++                // on-disk server name is "zed-remote-server-<channel>-<version>",
++                // matching what `script/freebsd-patches install-server` produces and
++                // staying stable across client rebuilds. Mirrors the normalization
++                // already done in auto_update's get_release_asset.
++                let mut version = version.clone();
++                version.pre = semver::Prerelease::EMPTY;
++                version.build = semver::BuildMetadata::EMPTY;
++                version.to_string()
++            }
+         };
+         let binary_name = format!(
+             "zed-remote-server-{}-{}{}",
