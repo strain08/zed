@@ -54,6 +54,17 @@ git add freebsd/ && git commit -m "freebsd: <what changed>"
 | `script/freebsd-patches export <ref> [--base REF]` | Regenerate the series from a branch/worktree |
 | `script/freebsd-patches status` | Series size, base, active worktrees |
 
+## CI guardrail (Rung 1)
+
+`.github/workflows/freebsd-patch-check.yml` re-applies the series onto the
+latest upstream **stable** (gate) and **preview** (advisory) tags daily, on
+push to `freebsd-patches`, and on manual dispatch. It builds nothing — it just
+fails early if a patch stops applying, so conflicts surface before a release.
+
+Scheduled runs only fire for workflows on the repo's **default branch**, so set
+this fork's default branch to `freebsd-patches` for the daily check to run
+automatically (manual dispatch and push work regardless).
+
 ## Draining the queue (the long game)
 
 Every patch accepted upstream is one you never re-apply again. Upstream is

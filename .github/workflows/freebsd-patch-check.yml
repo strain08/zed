@@ -1,0 +1,91 @@
+# Rung 1 guardrail: verify the FreeBSD patch series still applies onto the
+# latest upstream release tags. No binaries are built or published here — this
+# only proves the series is still re-appliable, so conflicts surface early
+# instead of during a release. See freebsd/README.md.
+#
+# NOTE: `schedule` triggers only fire for workflows on the repo's DEFAULT
+# branch. For the daily check to run automatically, set this fork's default
+# branch to `freebsd-patches` (recommended), or copy this workflow onto the
+# default branch. `workflow_dispatch` and `push` work from any branch.
+name: FreeBSD patch series check
+
+on:
+  push:
+    branches: [freebsd-patches]
+    paths:
+      - freebsd/patches/**
+      - script/freebsd-patches
+      - .github/workflows/freebsd-patch-check.yml
+  schedule:
+    - cron: "17 6 * * *" # daily; catches newly cut upstream tags
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Upstream tag to test (default: latest stable + latest preview)"
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: freebsd-patch-check
+  cancel-in-progress: true
+
+jobs:
+  apply-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout freebsd-patches
+        uses: actions/checkout@v4
+        with:
+          ref: freebsd-patches
+          fetch-depth: 0 # full history so 3-way merge has the base blobs
+
+      - name: Fetch upstream tags
+        run: |
+          git remote add upstream https://github.com/zed-industries/zed.git \
+            || git remote set-url upstream https://github.com/zed-industries/zed.git
+          # git am needs a committer identity
+          git config user.email "freebsd-ci@users.noreply.github.com"
+          git config user.name "freebsd-ci"
+          git fetch --quiet upstream '+refs/tags/v*:refs/tags/v*'
+
+      - name: Determine tags to check
+        id: tags
+        run: |
+          requested='${{ github.event.inputs.tag }}'
+          if [ -n "$requested" ]; then
+            stable="$requested"; preview=""
+          else
+            stable=$(git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+            preview=$(git tag --list 'v*-pre' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-pre$' | sort -V | tail -1)
+          fi
+          echo "stable=$stable" >> "$GITHUB_OUTPUT"
+          echo "preview=$preview" >> "$GITHUB_OUTPUT"
+          echo "Checking stable=$stable preview=$preview"
+
+      - name: Apply onto latest stable (gate)
+        run: |
+          script/freebsd-patches apply "${{ steps.tags.outputs.stable }}" \
+            --into "$RUNNER_TEMP/build-stable" --no-tag
+
+      - name: Apply onto latest preview (advisory)
+        if: steps.tags.outputs.preview != ''
+        continue-on-error: true
+        run: |
+          script/freebsd-patches apply "${{ steps.tags.outputs.preview }}" \
+            --into "$RUNNER_TEMP/build-preview" --no-tag
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## FreeBSD patch series check"
+            echo ""
+            echo "| Upstream tag | Channel | Result |"
+            echo "|---|---|---|"
+            echo "| ${{ steps.tags.outputs.stable }} | stable | ${{ job.status == 'success' && '✅ applies' || '❌ needs attention' }} |"
+            if [ -n "${{ steps.tags.outputs.preview }}" ]; then
+              echo "| ${{ steps.tags.outputs.preview }} | preview | advisory |"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
