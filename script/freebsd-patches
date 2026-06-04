@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+#
+# freebsd-patches — maintain the downstream FreeBSD patch series and apply it
+# onto upstream release tags.
+#
+# The patch files in freebsd/patches/ are the single source of truth. They are
+# applied on top of a pristine upstream tag to produce a buildable tree; they
+# are never merged into a long-lived branch. See freebsd/README.md.
+#
+# Usage:
+#   script/freebsd-patches list
+#   script/freebsd-patches apply  <upstream-tag> [--into DIR] [--tag NAME|--no-tag] [--force]
+#   script/freebsd-patches export <source-ref>   [--base REF]
+#   script/freebsd-patches status
+#
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+patch_dir="$repo_root/freebsd/patches"
+base_file="$repo_root/freebsd/upstream-base"
+
+die() { printf 'error: %s\n' "$*" >&2; exit 1; }
+have_patches() { compgen -G "$patch_dir/*.patch" >/dev/null 2>&1; }
+
+# Resolve a ref to a commit, fetching the tag from origin if it is not present.
+resolve_ref() {
+  local ref="$1"
+  if git rev-parse --verify --quiet "${ref}^{commit}" >/dev/null; then
+    return 0
+  fi
+  echo "ref '$ref' not found locally; fetching from origin..." >&2
+  git fetch --quiet origin "tag" "$ref" 2>/dev/null \
+    || git fetch --quiet origin "$ref" 2>/dev/null \
+    || die "could not resolve '$ref' (not a local ref or origin tag)"
+}
+
+cmd_list() {
+  have_patches || die "no patches in $patch_dir"
+  local n=0
+  for p in "$patch_dir"/*.patch; do
+    n=$((n + 1))
+    local subject
+    subject="$(sed -n 's/^Subject: \(\[PATCH[^]]*\] \)\?//p' "$p" | head -1)"
+    printf '%2d  %s\n' "$n" "$subject"
+  done
+  printf '\n%d patch(es) in %s\n' "$n" "${patch_dir#$repo_root/}"
+}
+
+cmd_status() {
+  printf 'series:        %s\n' "${patch_dir#$repo_root/}"
+  have_patches && printf 'patches:       %s\n' "$(ls -1 "$patch_dir"/*.patch | wc -l | tr -d ' ')"
+  [ -f "$base_file" ] && printf 'cut against:   %s\n' "$(cat "$base_file")"
+  printf 'worktrees:\n'
+  git worktree list | sed 's/^/  /'
+}
+
+cmd_apply() {
+  local tag="" into="" build_tag="" force=0 want_tag=1
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --into)   into="$2"; shift 2 ;;
+      --tag)    build_tag="$2"; shift 2 ;;
+      --no-tag) want_tag=0; shift ;;
+      --force)  force=1; shift ;;
+      -*)       die "unknown flag: $1" ;;
+      *)        [ -z "$tag" ] && tag="$1" || die "unexpected argument: $1"; shift ;;
+    esac
+  done
+  [ -n "$tag" ] || die "usage: freebsd-patches apply <upstream-tag> [--into DIR] [--tag NAME|--no-tag]"
+  have_patches || die "no patches in $patch_dir"
+
+  resolve_ref "$tag"
+  : "${into:=$repo_root/../zed-freebsd-build/$tag}"
+  : "${build_tag:=${tag}-freebsd}"
+
+  if [ -e "$into" ]; then
+    [ "$force" = 1 ] || die "worktree path already exists: $into (use --force to replace)"
+    git worktree remove --force "$into" 2>/dev/null || rm -rf "$into"
+  fi
+
+  echo "==> creating worktree for $tag at $into"
+  git worktree add --quiet --force "$into" "$tag"
+
+  echo "==> applying $(ls -1 "$patch_dir"/*.patch | wc -l | tr -d ' ') patch(es)"
+  if ! git -C "$into" am --3way --keep-non-patch "$patch_dir"/*.patch; then
+    cat >&2 <<EOF
+
+!! a patch did not apply cleanly. The worktree is left mid-am at:
+     $into
+   Fix the conflict there, then:
+     git -C "$into" am --continue     # after resolving + 'git add'
+   or abort:
+     git -C "$into" am --abort
+   Once the tree builds, capture the fixed series back into the repo with:
+     script/freebsd-patches export "$into" --base "$tag"
+EOF
+    exit 1
+  fi
+
+  if [ "$want_tag" = 1 ]; then
+    git -C "$into" tag -f "$build_tag" >/dev/null
+    echo "==> tagged $build_tag"
+  fi
+
+  cat <<EOF
+
+OK: $tag + FreeBSD series applied.
+  worktree: $into
+  tag:      ${build_tag}$([ "$want_tag" = 1 ] || echo ' (skipped)')
+  build:    cd "$into" && cargo build --release   # or your FreeBSD build step
+EOF
+}
+
+cmd_export() {
+  local source="" base=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --base) base="$2"; shift 2 ;;
+      -*)     die "unknown flag: $1" ;;
+      *)      [ -z "$source" ] && source="$1" || die "unexpected argument: $1"; shift ;;
+    esac
+  done
+  [ -n "$source" ] || die "usage: freebsd-patches export <source-ref> [--base REF]"
+
+  if [ -z "$base" ]; then
+    [ -f "$base_file" ] || die "no --base given and $base_file is missing"
+    base="$(cat "$base_file")"
+  fi
+  resolve_ref "$base"
+
+  # 'source' may be a worktree path or a ref.
+  local src_ref="$source"
+  if [ -d "$source/.git" ] || git -C "$source" rev-parse --git-dir >/dev/null 2>&1; then
+    src_ref="$(git -C "$source" rev-parse HEAD)"
+  else
+    resolve_ref "$source"
+  fi
+
+  echo "==> regenerating series from ${base}..${source}"
+  rm -f "$patch_dir"/*.patch
+  git format-patch --zero-commit --no-signature -o "$patch_dir" "${base}..${src_ref}" >/dev/null
+  printf '%s\n' "$base" > "$base_file"
+  echo "==> wrote $(ls -1 "$patch_dir"/*.patch | wc -l | tr -d ' ') patch(es); base recorded as $base"
+  echo "    review with 'git diff' and commit freebsd/."
+}
+
+case "${1:-}" in
+  list)   shift; cmd_list "$@" ;;
+  apply)  shift; cmd_apply "$@" ;;
+  export) shift; cmd_export "$@" ;;
+  status) shift; cmd_status "$@" ;;
+  ""|-h|--help)
+    sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) die "unknown command: $1 (try --help)" ;;
+esac

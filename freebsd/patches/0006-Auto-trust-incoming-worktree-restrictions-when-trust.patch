@@ -1,0 +1,38 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: strain08 <strain08@gmail.com>
+Date: Thu, 4 Jun 2026 11:05:47 +0300
+Subject: [PATCH 6/6] Auto-trust incoming worktree restrictions when
+ trust_all_worktrees is set
+
+When a restriction arrives from an upstream host that evaluates trust with
+its own settings, honor the local trust_all_worktrees opt-in by trusting the
+worktree immediately and notifying the host. Previously auto_trust_all only
+reacted to settings changes, so host-side features like language servers
+could stay blocked forever.
+---
+ crates/project/src/trusted_worktrees.rs | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/crates/project/src/trusted_worktrees.rs b/crates/project/src/trusted_worktrees.rs
+index 8d8804c3f9..ffdee38f20 100644
+--- a/crates/project/src/trusted_worktrees.rs
++++ b/crates/project/src/trusted_worktrees.rs
+@@ -443,6 +443,18 @@ impl TrustedWorktreesStore {
+             }
+         }
+ 
++        // A restriction can arrive from an upstream host (e.g. a remote server) that evaluates
++        // trust on its own, with its own settings. When this workspace has opted into trusting
++        // all worktrees, answer the restriction immediately by trusting it and notifying the
++        // host; otherwise host-side features such as language servers stay blocked forever,
++        // since `auto_trust_all` only reacts to settings *changes*, not to incoming restrictions.
++        if ProjectSettings::get_global(cx).session.trust_all_worktrees
++            && let Some(worktree_store) = worktree_store.upgrade()
++        {
++            self.trust(&worktree_store, restricted, cx);
++            return;
++        }
++
+         cx.emit(TrustedWorktreesEvent::Restricted(
+             worktree_store,
+             restricted,
