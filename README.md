@@ -22,16 +22,32 @@ Every chapter is the same three steps: clone → apply patches onto a tag → bu
 Requirements:
 
 - [Rust (rustup)](https://www.rust-lang.org/tools/install)
-- [Git for Windows](https://git-scm.com/download/win) — run the snippet in its **Git Bash**
+- [Git for Windows](https://git-scm.com/download/win) — provides **Git Bash**
 - Visual Studio 2022 or Build Tools, with the **Desktop development with C++** workload
 - **Windows 10/11 SDK** (≥ `10.0.20348.0`)
 - [CMake](https://cmake.org/download/)
 
+The `apply` step is a bash script, so run it in **Git Bash**. Build (`cargo`) from a **Developer PowerShell for VS 2022** so the MSVC linker is on `PATH`.
+
+**Option A — Git Bash** (matches the other OSes):
+
 ```sh
 git clone https://github.com/strain08/zed.git
 cd zed
-script/freebsd-patches apply v1.5.3      # ← latest upstream tag
+./script/freebsd-patches apply v1.5.3    # ← latest upstream tag
 cd ../zed-freebsd-build/v1.5.3
+cargo run --release                      # if linking fails, run this from Developer PowerShell
+```
+
+**Option B — PowerShell only** (no bash; do the apply with plain git):
+
+```powershell
+git clone https://github.com/strain08/zed.git
+cd zed
+git fetch https://github.com/zed-industries/zed.git tag v1.5.3
+git worktree add ..\zed-freebsd-build\v1.5.3 v1.5.3
+git -C ..\zed-freebsd-build\v1.5.3 am --3way (Get-ChildItem freebsd\patches\*.patch | Sort-Object Name).FullName
+cd ..\zed-freebsd-build\v1.5.3
 cargo run --release
 ```
 
