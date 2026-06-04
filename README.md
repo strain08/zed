@@ -1,48 +1,115 @@
-# Zed
+# Zed — FreeBSD fork
 
-[![Zed](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/zed-industries/zed/main/assets/badge/v0.json)](https://zed.dev)
-[![CI](https://github.com/zed-industries/zed/actions/workflows/run_tests.yml/badge.svg)](https://github.com/zed-industries/zed/actions/workflows/run_tests.yml)
+Unofficial fork of [Zed](https://github.com/zed-industries/zed) that adds **FreeBSD remote-server support** — edit on your desktop, run the code on a FreeBSD host over SSH. For Zed itself, upstream is the source of truth: [upstream README](https://github.com/zed-industries/zed/blob/main/README.md).
 
-Welcome to Zed, a high-performance, multiplayer code editor from the creators of [Atom](https://github.com/atom/atom) and [Tree-sitter](https://github.com/tree-sitter/tree-sitter).
+**We track upstream releases.** Our changes are a small patch set applied on top of an upstream release tag — you pick a tag, apply, build. Latest tags: <https://github.com/zed-industries/zed/tags> (examples below use `v1.5.3`).
+
+**Tested:** Windows client ↔ FreeBSD server. macOS/Linux clients and a native FreeBSD GUI compile but are untested.
+
+## How it works
+
+Two pieces, both built from the **same upstream tag**:
+
+- a **GUI client** on your desktop (Windows / macOS / Linux) — build the chapter for your OS
+- **`zed-remote-server`** on the FreeBSD host — the FreeBSD chapter
+
+Every chapter is the same three steps: clone → apply patches onto a tag → build.
 
 ---
 
-### Installation
+## Windows (client) — tested
 
-On macOS, Linux, and Windows you can [download Zed directly](https://zed.dev/download) or install Zed via your local package manager ([macOS](https://zed.dev/docs/installation#macos)/[Linux](https://zed.dev/docs/linux#installing-via-a-package-manager)/[Windows](https://zed.dev/docs/windows#package-managers)).
+Requirements:
 
-Other platforms are not yet available:
+- [Rust (rustup)](https://www.rust-lang.org/tools/install)
+- [Git for Windows](https://git-scm.com/download/win) — run the snippet in its **Git Bash**
+- Visual Studio 2022 or Build Tools, with the **Desktop development with C++** workload
+- **Windows 10/11 SDK** (≥ `10.0.20348.0`)
+- [CMake](https://cmake.org/download/)
 
-- Web ([tracking discussion](https://github.com/zed-industries/zed/discussions/26195))
+```sh
+git clone https://github.com/strain08/zed.git
+cd zed
+script/freebsd-patches apply v1.5.3      # ← latest upstream tag
+cd ../zed-freebsd-build/v1.5.3
+cargo run --release
+```
 
-### Developing Zed
+## macOS (client) — untested
 
-- [Building Zed for macOS](./docs/src/development/macos.md)
-- [Building Zed for Linux](./docs/src/development/linux.md)
-- [Building Zed for Windows](./docs/src/development/windows.md)
+Requirements:
 
-### Contributing
+- [Rust (rustup)](https://www.rust-lang.org/tools/install)
+- Xcode + command line tools: `xcode-select --install`
+- CMake: `brew install cmake`
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for ways you can contribute to Zed.
+```sh
+git clone https://github.com/strain08/zed.git
+cd zed
+script/freebsd-patches apply v1.5.3      # ← latest upstream tag
+cd ../zed-freebsd-build/v1.5.3
+cargo run --release
+```
 
-Also... we're hiring! Check out our [jobs](https://zed.dev/jobs) page for open roles.
+## Linux (client) — untested
 
-### Licensing
+Requirements:
 
-Zed source code is licensed primarily under GPL-3.0-or-later, with Apache-2.0 components where marked.
+- [Rust (rustup)](https://www.rust-lang.org/tools/install)
+- System packages — installed by `script/linux` below
 
-License information for third party dependencies must be correctly provided for CI to pass.
+```sh
+git clone https://github.com/strain08/zed.git
+cd zed
+script/freebsd-patches apply v1.5.3      # ← latest upstream tag
+cd ../zed-freebsd-build/v1.5.3
+script/linux                             # installs system deps
+cargo run --release
+```
 
-We use [`cargo-about`](https://github.com/EmbarkStudios/cargo-about) to automatically comply with open source licenses. If CI is failing, check the following:
+## FreeBSD (remote server)
 
-- Is it showing a `no license specified` error for a crate you've created? If so, add `publish = false` under `[package]` in your crate's Cargo.toml.
-- Is the error `failed to satisfy license requirements` for a dependency? If so, first determine what license the project has and whether this system is sufficient to comply with this license's requirements. If you're unsure, ask a lawyer. Once you've verified that this system is acceptable add the license's SPDX identifier to the `accepted` array in `script/licenses/zed-licenses.toml`.
-- Is `cargo-about` unable to find the license for a dependency? If so, add a clarification field at the end of `script/licenses/zed-licenses.toml`, as specified in the [cargo-about book](https://embarkstudios.github.io/cargo-about/cli/generate/config.html#crate-configuration).
+Requirements:
 
-## Sponsorship
+- `git`
+- Rust + system packages — installed by `script/freebsd` below
 
-Zed is developed by **Zed Industries, Inc.**, a for-profit company.
+```sh
+git clone https://github.com/strain08/zed.git
+cd zed
+script/freebsd-patches apply v1.5.3      # ← latest upstream tag
+cd ../zed-freebsd-build/v1.5.3
+script/freebsd                           # installs deps + rustup
+cargo build --release -p remote_server   # → target/release/zed-remote-server
+```
 
-If you’d like to financially support the project, you can do so via GitHub Sponsors.
-Sponsorships go directly to Zed Industries and are used as general company revenue.
-There are no perks or entitlements associated with sponsorship.
+## Connect client → FreeBSD host
+
+Zed has no prebuilt FreeBSD server to download, so point it at the one you just built — either:
+
+- set `ZED_COPY_REMOTE_SERVER=/path/to/zed-remote-server` before launching the client (needs a debug client or the `build-remote-server-binary` feature), **or**
+- drop the `zed-remote-server` binary into `~/.zed_server/` on the FreeBSD host.
+
+Then in the client: **Remote Projects → connect over SSH** to `user@freebsd-host` and open a folder.
+
+> Client and server must be built from the **same upstream tag**.
+
+## Limitations
+
+- Only **Windows client ↔ FreeBSD server** is tested; everything else compiles but is unverified.
+- **No prebuilt binaries** — build from source.
+- **No collab / calls / screen-share** on FreeBSD (`webrtc-sys` doesn't build there).
+- Crash reporting is **stubbed** on FreeBSD (no minidumps).
+- File watching uses **polling**, not native kqueue.
+- Extension/wasm platform matching uses a **temporary hack** (`freebsd/patches/0003`).
+
+## TODO
+
+- [ ] Upstream the clean FreeBSD patches
+- [ ] Fix the wasm-platform-match hack, then upstream it
+- [ ] Publish a prebuilt `zed-remote-server` / FreeBSD `pkg`
+- [ ] Native kqueue file-watching instead of polling
+
+---
+
+Maintainer notes (how the patch series is kept in sync with upstream): [`freebsd/README.md`](freebsd/README.md).
