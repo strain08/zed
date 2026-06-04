@@ -9,8 +9,9 @@
 #
 # Usage:
 #   script/freebsd-patches list
-#   script/freebsd-patches apply  <upstream-tag> [--into DIR] [--tag NAME|--no-tag] [--force]
-#   script/freebsd-patches export <source-ref>   [--base REF]
+#   script/freebsd-patches apply          <upstream-tag> [--into DIR] [--tag NAME|--no-tag] [--force]
+#   script/freebsd-patches install-server <upstream-tag> [--channel dev] [--version build] [--dest DIR]
+#   script/freebsd-patches export         <source-ref>   [--base REF]
 #   script/freebsd-patches status
 #
 set -euo pipefail
@@ -154,12 +155,76 @@ cmd_export() {
   echo "    review with 'git diff' and commit freebsd/."
 }
 
+# Build zed-remote-server from a tag's worktree and install it on this FreeBSD
+# host under the versioned name the client looks for in ~/.zed_server.
+# A client built from source ('cargo run') is the 'dev' channel, where the name
+# is the fixed 'zed-remote-server-dev-build' — so the defaults need no version.
+cmd_install_server() {
+  local tag="" channel="dev" version="" dest="$HOME/.zed_server" worktree=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --channel)  channel="$2"; shift 2 ;;
+      --version)  version="$2"; shift 2 ;;
+      --dest)     dest="$2"; shift 2 ;;
+      --worktree) worktree="$2"; shift 2 ;;
+      -*)         die "unknown flag: $1" ;;
+      *)          [ -z "$tag" ] && tag="$1" || die "unexpected argument: $1"; shift ;;
+    esac
+  done
+  [ -n "$tag" ] || [ -n "$worktree" ] \
+    || die "usage: freebsd-patches install-server <upstream-tag> [--channel dev] [--version build] [--dest DIR]"
+  : "${worktree:=$repo_root/../zed-freebsd-build/$tag}"
+  [ -d "$worktree" ] || die "worktree not found: $worktree (run 'freebsd-patches apply $tag' first)"
+
+  if [ "$channel" = "dev" ]; then
+    : "${version:=build}"
+  elif [ -z "$version" ]; then
+    die "non-dev channel '$channel' needs --version (the client's app version)"
+  fi
+
+  echo "==> building remote_server in $worktree"
+  ( cd "$worktree" && cargo build --release -p remote_server )
+
+  local target_dir="${CARGO_TARGET_DIR:-$worktree/target}"
+  local artifact="$target_dir/release/remote_server"
+  [ -f "$artifact" ] || die "build artifact not found: $artifact"
+
+  local name="zed-remote-server-${channel}-${version}"
+  mkdir -p "$dest"
+  cp "$artifact" "$dest/$name"
+  chmod +x "$dest/$name"
+
+  cat <<EOF
+
+OK: installed remote server for a '${channel}' client.
+  from: $artifact
+  to:   $dest/$name
+
+A source-built client ('cargo run') is the 'dev' channel and looks for exactly
+this name, so it will use it on connect — no ZED_COPY_REMOTE_SERVER needed.
+Now in the desktop client: Remote Projects -> connect over SSH to this host.
+EOF
+}
+
 case "${1:-}" in
   list)   shift; cmd_list "$@" ;;
   apply)  shift; cmd_apply "$@" ;;
   export) shift; cmd_export "$@" ;;
   status) shift; cmd_status "$@" ;;
+  install-server) shift; cmd_install_server "$@" ;;
   ""|-h|--help)
-    sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//' ;;
+    cat >&2 <<'EOF'
+freebsd-patches — maintain the FreeBSD patch series and apply it to upstream tags.
+
+  list                          show the patch series
+  apply <tag> [opts]            apply series onto an upstream tag (creates a worktree)
+  install-server <tag> [opts]   build remote_server in that worktree + install to ~/.zed_server
+  export <ref> [--base REF]     regenerate the series from a branch/worktree
+  status                        series size, base, active worktrees
+
+apply opts:           --into DIR   --tag NAME | --no-tag   --force
+install-server opts:  --channel dev   --version build   --dest DIR   --worktree DIR
+EOF
+    ;;
   *) die "unknown command: $1 (try --help)" ;;
 esac

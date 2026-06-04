@@ -81,23 +81,21 @@ Requirements:
 ```sh
 git clone https://github.com/strain08/zed.git
 cd zed
-script/freebsd-patches apply v1.5.3      # ← latest upstream tag
-cd ../zed-freebsd-build/v1.5.3
-script/freebsd                           # installs deps + rustup
-cargo build --release -p remote_server   # → target/release/remote_server
+script/freebsd-patches apply v1.5.3                    # ← latest upstream tag → worktree
+( cd ../zed-freebsd-build/v1.5.3 && script/freebsd )   # one-time: deps + rustup
+script/freebsd-patches install-server v1.5.3           # build remote_server + install to ~/.zed_server
 ```
 
 ## Connect client → FreeBSD host
 
-Zed has no prebuilt FreeBSD server to download, so point it at the `remote_server` binary you just built. Easiest — let the client name and upload it:
+A client built from source (`cargo run`) runs as the **dev** channel, and `install-server` above already placed the exact binary it looks for — so just connect:
 
-- set `ZED_COPY_REMOTE_SERVER=/path/to/target/release/remote_server` before launching the client (needs a debug client or the `build-remote-server-binary` feature).
+In the client: **Remote Projects → connect over SSH** to `user@freebsd-host` and open a folder.
 
-Or place it on the host by hand — the client looks for a versioned name in `~/.zed_server/`:
+Using a packaged/stable client instead? Tell `install-server` the channel + version:
 
 ```sh
-# on the FreeBSD host; <channel> is stable|preview|nightly, <version> the client's version
-cp target/release/remote_server ~/.zed_server/zed-remote-server-<channel>-<version>
+script/freebsd-patches install-server v1.5.3 --channel stable --version <client-version>
 ```
 
 Then in the client: **Remote Projects → connect over SSH** to `user@freebsd-host` and open a folder.
