@@ -23,10 +23,10 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
  1 file changed, 11 insertions(+), 1 deletion(-)
 
 diff --git a/crates/remote/src/transport/ssh.rs b/crates/remote/src/transport/ssh.rs
-index 1a8337dcd7..0fa39ffc0c 100644
+index 2beae54f2f..a628e666f0 100644
 --- a/crates/remote/src/transport/ssh.rs
 +++ b/crates/remote/src/transport/ssh.rs
-@@ -791,7 +791,17 @@ impl SshRemoteConnection {
+@@ -794,7 +794,17 @@ impl SshRemoteConnection {
      ) -> Result<Arc<RelPath>> {
          let version_str = match release_channel {
              ReleaseChannel::Dev => "build".to_string(),

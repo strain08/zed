@@ -1,14 +1,14 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: strain08 <117145406+strain08@users.noreply.github.com>
 Date: Wed, 3 Jun 2026 07:34:26 +0300
-Subject: [PATCH 5/6] freebsd: enable poll instead of recursive watch
+Subject: [PATCH 5/7] freebsd: enable poll instead of recursive watch
 
 ---
  crates/fs/src/fs_watcher.rs | 20 ++++++++++++++++----
  1 file changed, 16 insertions(+), 4 deletions(-)
 
 diff --git a/crates/fs/src/fs_watcher.rs b/crates/fs/src/fs_watcher.rs
-index ff9e91121d..d4b0a1fa26 100644
+index 458b8cf277..f508a79994 100644
 --- a/crates/fs/src/fs_watcher.rs
 +++ b/crates/fs/src/fs_watcher.rs
 @@ -105,7 +105,7 @@ impl Watcher for FsWatcher {
@@ -55,7 +55,7 @@ index ff9e91121d..d4b0a1fa26 100644
                              notify::RecursiveMode::Recursive
                          } else {
                              notify::RecursiveMode::NonRecursive
-@@ -748,7 +760,7 @@ fn path_already_covered(
+@@ -755,7 +767,7 @@ fn path_already_covered(
      path_registrations: &HashMap<Arc<std::path::Path>, PathRegistrationState>,
      mode: WatcherMode,
  ) -> bool {

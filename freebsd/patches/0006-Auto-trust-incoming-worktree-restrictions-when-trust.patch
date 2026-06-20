@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: strain08 <strain08@gmail.com>
 Date: Thu, 4 Jun 2026 11:05:47 +0300
-Subject: [PATCH 6/6] Auto-trust incoming worktree restrictions when
+Subject: [PATCH 6/7] Auto-trust incoming worktree restrictions when
  trust_all_worktrees is set
 
 When a restriction arrives from an upstream host that evaluates trust with

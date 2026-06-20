@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: strain08 <117145406+strain08@users.noreply.github.com>
 Date: Wed, 3 Jun 2026 05:42:15 +0300
-Subject: [PATCH 3/6] freebsd: fix wasm platform match (temp)
+Subject: [PATCH 3/7] freebsd: fix wasm platform match (temp)
 
 this will download linux extensions on freebsd, requires linux compat layer (do they work in linuxulator?)
 ---
@@ -9,7 +9,7 @@ this will download linux extensions on freebsd, requires linux compat layer (do 
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/crates/extension_host/src/wasm_host/wit/since_v0_8_0.rs b/crates/extension_host/src/wasm_host/wit/since_v0_8_0.rs
-index 8da53ca638..dff0f0c69c 100644
+index 15e5ff9406..20189dcf31 100644
 --- a/crates/extension_host/src/wasm_host/wit/since_v0_8_0.rs
 +++ b/crates/extension_host/src/wasm_host/wit/since_v0_8_0.rs
 @@ -863,7 +863,7 @@ impl platform::Host for WasmState {
@@ -19,5 +19,5 @@ index 8da53ca638..dff0f0c69c 100644
 -                "linux" => platform::Os::Linux,
 +                "linux" | "freebsd" => platform::Os::Linux,
                  "windows" => platform::Os::Windows,
-                 _ => panic!("unsupported os"),
+                 _ => bail!("unsupported os"),
              },
