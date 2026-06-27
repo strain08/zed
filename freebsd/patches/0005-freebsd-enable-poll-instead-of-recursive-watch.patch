@@ -4,26 +4,17 @@ Date: Wed, 3 Jun 2026 07:34:26 +0300
 Subject: [PATCH 5/7] freebsd: enable poll instead of recursive watch
 
 ---
- crates/fs/src/fs_watcher.rs | 20 ++++++++++++++++----
- 1 file changed, 16 insertions(+), 4 deletions(-)
+ crates/fs/src/fs_watcher.rs | 14 ++++++++++++++-
+ 1 file changed, 13 insertions(+), 1 deletion(-)
 
 diff --git a/crates/fs/src/fs_watcher.rs b/crates/fs/src/fs_watcher.rs
-index 458b8cf277..f508a79994 100644
+index 0000000001..0000000002 100644
 --- a/crates/fs/src/fs_watcher.rs
 +++ b/crates/fs/src/fs_watcher.rs
-@@ -105,7 +105,7 @@ impl Watcher for FsWatcher {
-                 path.ancestors().skip(1).any(|ancestor| {
-                     registrations.get(ancestor).is_some_and(|registration| {
-                         registration.mode == WatcherMode::Poll
--                            || cfg!(any(target_os = "windows", target_os = "macos", target_os = "freebsd"))
-+                            || cfg!(any(target_os = "windows", target_os = "macos"))
-                     })
-                 }),
-                 registrations.contains_key(path),
-@@ -168,12 +168,24 @@ pub fn requires_poll_watcher(path: &Path) -> bool {
+@@ -207,12 +207,24 @@ pub fn requires_poll_watcher(path: &Path) -> bool {
          _ => {}
      }
- 
+
 +    // FreeBSD's native backend is kqueue, which has no real recursive mode:
 +    // `notify` emulates it by opening a file descriptor per file, which exhausts
 +    // the process fd limit on real trees, and kqueue reports that as a generic IO
@@ -40,27 +31,9 @@ index 458b8cf277..f508a79994 100644
      {
          return detect_requires_poll_watcher_linux(path);
      }
- 
+
 -    #[cfg(not(target_os = "linux"))]
 +    #[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
      {
          let _ = path;
          false
-@@ -684,7 +696,7 @@ impl GlobalWatcher {
-                     .expect("native watcher initialized")
-                     .watch(
-                         path,
--                        if cfg!(any(target_os = "windows", target_os = "macos", target_os = "freebsd")) {
-+                        if cfg!(any(target_os = "windows", target_os = "macos")) {
-                             notify::RecursiveMode::Recursive
-                         } else {
-                             notify::RecursiveMode::NonRecursive
-@@ -755,7 +767,7 @@ fn path_already_covered(
-     path_registrations: &HashMap<Arc<std::path::Path>, PathRegistrationState>,
-     mode: WatcherMode,
- ) -> bool {
--    (mode == WatcherMode::Poll || cfg!(any(target_os = "windows", target_os = "macos", target_os = "freebsd")))
-+    (mode == WatcherMode::Poll || cfg!(any(target_os = "windows", target_os = "macos")))
-         && path
-             .ancestors()
-             .skip(1)
