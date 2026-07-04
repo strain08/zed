@@ -50,20 +50,29 @@ git add freebsd/ && git commit -m "freebsd: <what changed>"
 | Command | Purpose |
 |---|---|
 | `script/freebsd-patches list` | Show the series and subjects |
+| `script/freebsd-patches check [<tag>]` | Verify the series applies onto an upstream tag (latest stable if omitted) and record it in the top-level README |
 | `script/freebsd-patches apply <tag>` | Apply series onto an upstream tag in a worktree |
 | `script/freebsd-patches export <ref> [--base REF]` | Regenerate the series from a branch/worktree |
 | `script/freebsd-patches status` | Series size, base, active worktrees |
 
-## CI guardrail (Rung 1)
+## Checking compatibility
 
-`.github/workflows/freebsd-patch-check.yml` re-applies the series onto the
-latest upstream **stable** (gate) and **preview** (advisory) tags daily, on
-push to `freebsd-patches`, and on manual dispatch. It builds nothing — it just
-fails early if a patch stops applying, so conflicts surface before a release.
+When a new upstream release lands, run:
 
-Scheduled runs only fire for workflows on the repo's **default branch**, so set
-this fork's default branch to `freebsd-patches` for the daily check to run
-automatically (manual dispatch and push work regardless).
+```sh
+script/freebsd-patches check          # latest upstream stable
+script/freebsd-patches check v1.9.0   # or a specific tag
+```
+
+This re-applies the series onto the tag in a throwaway worktree (building
+nothing) purely to prove it still applies. On success it updates the
+**Currently verified against upstream** line at the top of the repository
+[`README.md`](../README.md) to that tag and today's date; commit that change.
+
+If a patch stops applying, `check` offers to keep the worktree paused mid-`am`
+so you can fix it in place: resolve the conflict, `git am --continue`, then
+`export` the fixed series (see above). Declining discards the worktree. Either
+way the README is left untouched until a clean run records a new version.
 
 ## Draining the queue (the long game)
 

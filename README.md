@@ -2,7 +2,9 @@
 
 Unofficial fork of [Zed](https://github.com/zed-industries/zed) that adds **FreeBSD remote-server support** — edit on your desktop, run the code on a FreeBSD host over SSH. For Zed itself, upstream is the source of truth: [upstream README](https://github.com/zed-industries/zed/blob/main/README.md).
 
-**We track upstream releases.** Our changes are a small patch set applied on top of an upstream release tag — you pick a tag, apply, build. Latest tags: <https://github.com/zed-industries/zed/tags> (examples below use `v1.5.3`).
+**We track upstream releases.** Our changes are a small patch set applied on top of an upstream release tag — you pick a tag, apply, build. Latest tags: <https://github.com/zed-industries/zed/tags> (commands below write `vX.Y.Z` — substitute a real tag from that list).
+
+**Currently verified against upstream `v1.8.2`** — the patch series is checked to apply onto this release (last checked 2026-07-05 via `script/freebsd-patches check`).
 
 **Tested:** Windows client ↔ FreeBSD server. macOS/Linux clients and a native FreeBSD GUI compile but are untested.
 
@@ -32,8 +34,8 @@ In **Git Bash**:
 ```sh
 git clone https://github.com/strain08/zed.git
 cd zed
-./script/freebsd-patches apply v1.5.3    # ← latest upstream tag
-cd ../zed-freebsd-build/v1.5.3
+./script/freebsd-patches apply vX.Y.Z    # ← latest upstream tag
+cd ../zed-freebsd-build/vX.Y.Z
 cargo run --release
 ```
 
@@ -50,8 +52,8 @@ Requirements:
 ```sh
 git clone https://github.com/strain08/zed.git
 cd zed
-script/freebsd-patches apply v1.5.3      # ← latest upstream tag
-cd ../zed-freebsd-build/v1.5.3
+script/freebsd-patches apply vX.Y.Z      # ← latest upstream tag
+cd ../zed-freebsd-build/vX.Y.Z
 cargo run --release
 ```
 
@@ -65,8 +67,8 @@ Requirements:
 ```sh
 git clone https://github.com/strain08/zed.git
 cd zed
-script/freebsd-patches apply v1.5.3      # ← latest upstream tag
-cd ../zed-freebsd-build/v1.5.3
+script/freebsd-patches apply vX.Y.Z      # ← latest upstream tag
+cd ../zed-freebsd-build/vX.Y.Z
 script/linux                             # installs system deps
 cargo run --release
 ```
@@ -81,9 +83,9 @@ Requirements:
 ```sh
 git clone https://github.com/strain08/zed.git
 cd zed
-script/freebsd-patches apply v1.5.3                    # ← latest upstream tag → worktree
-( cd ../zed-freebsd-build/v1.5.3 && script/freebsd )   # one-time: deps + rustup
-script/freebsd-patches install-server v1.5.3           # build remote_server + install to ~/.zed_server
+script/freebsd-patches apply vX.Y.Z                    # ← latest upstream tag → worktree
+( cd ../zed-freebsd-build/vX.Y.Z && script/freebsd )   # one-time: deps + rustup
+script/freebsd-patches install-server vX.Y.Z           # build remote_server + install to ~/.zed_server
 ```
 
 ## Connect client → FreeBSD host
@@ -95,7 +97,7 @@ In the client: **Remote Projects → connect over SSH** to `user@freebsd-host` a
 Using a packaged/stable client instead? Tell `install-server` the channel + version:
 
 ```sh
-script/freebsd-patches install-server v1.5.3 --channel stable --version <client-version>
+script/freebsd-patches install-server vX.Y.Z --channel stable --version <client-version>
 ```
 
 Then in the client: **Remote Projects → connect over SSH** to `user@freebsd-host` and open a folder.

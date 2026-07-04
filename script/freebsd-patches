@@ -9,6 +9,7 @@
 #
 # Usage:
 #   script/freebsd-patches list
+#   script/freebsd-patches check          [<upstream-tag>]
 #   script/freebsd-patches apply          <upstream-tag> [--into DIR] [--tag NAME|--no-tag] [--force]
 #   script/freebsd-patches install-server <upstream-tag> [--channel dev] [--version build] [--dest DIR]
 #   script/freebsd-patches export         <source-ref>   [--base REF]
@@ -19,6 +20,7 @@ set -euo pipefail
 repo_root="$(git rev-parse --show-toplevel)"
 patch_dir="$repo_root/freebsd/patches"
 base_file="$repo_root/freebsd/upstream-base"
+readme_file="$repo_root/README.md"
 upstream_url="https://github.com/zed-industries/zed.git"
 
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
@@ -122,6 +124,110 @@ OK: $tag + FreeBSD series applied.
 EOF
 }
 
+# Rewrite the "Currently verified against upstream" line in the top-level README.md
+# to record the tag the series was last verified to apply onto, plus today's date.
+update_compat_field() {
+  local tag="$1" today
+  today="$(date +%F)"
+  [ -f "$readme_file" ] || die "README not found: $readme_file"
+  grep -q '^\*\*Currently verified against upstream' "$readme_file" \
+    || die "no '**Currently verified against upstream' line in $readme_file to update"
+  local line="**Currently verified against upstream \`${tag}\`** — the patch series is checked to apply onto this release (last checked ${today} via \`script/freebsd-patches check\`)."
+  local tmp
+  tmp="$(mktemp)"
+  # Replace the whole line, matching only on its fixed prefix so the tag/date payload
+  # can be anything. awk avoids sed's delimiter/escaping pitfalls with backticks.
+  awk -v repl="$line" '
+    /^\*\*Currently verified against upstream/ { print repl; next }
+    { print }
+  ' "$readme_file" > "$tmp"
+  mv "$tmp" "$readme_file"
+}
+
+# Apply the series onto an upstream tag in a throwaway worktree purely to prove it
+# still applies. On success, record the tag in the README's compatibility field. On
+# failure, offer to keep the worktree mid-am so the patches can be fixed there.
+cmd_check() {
+  local tag=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -*) die "unknown flag: $1" ;;
+      *)  [ -z "$tag" ] && tag="$1" || die "unexpected argument: $1"; shift ;;
+    esac
+  done
+  have_patches || die "no patches in $patch_dir"
+
+  if [ -z "$tag" ]; then
+    echo "==> fetching upstream release tags to find the latest stable" >&2
+    git fetch --quiet "$upstream_url" '+refs/tags/v*:refs/tags/v*'
+    tag="$(git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)"
+    [ -n "$tag" ] || die "could not determine the latest upstream stable tag"
+    echo "==> latest upstream stable is $tag"
+  else
+    resolve_ref "$tag"
+  fi
+
+  local into="$repo_root/../zed-freebsd-build/.check-$tag"
+  if [ -e "$into" ]; then
+    git worktree remove --force "$into" 2>/dev/null || rm -rf "$into"
+  fi
+  # Ensure the checkout is removed even if we exit early.
+  trap 'git worktree remove --force "$into" 2>/dev/null || rm -rf "$into"' RETURN
+
+  echo "==> creating throwaway worktree for $tag at $into"
+  git worktree add --quiet --force "$into" "$tag"
+
+  # 'git am' needs a committer identity; supply a local fallback if none is set.
+  git -C "$into" config user.email >/dev/null 2>&1 \
+    || git -C "$into" config user.email "freebsd-patches@localhost"
+  git -C "$into" config user.name >/dev/null 2>&1 \
+    || git -C "$into" config user.name "freebsd-patches"
+
+  echo "==> applying $(ls -1 "$patch_dir"/*.patch | wc -l | tr -d ' ') patch(es) onto $tag"
+  if ! git -C "$into" am --3way --keep-non-patch "$patch_dir"/*.patch; then
+    printf '\n!! the FreeBSD series does NOT apply cleanly onto %s.\n' "$tag" >&2
+    local answer="n"
+    if [ -t 0 ]; then
+      printf 'Keep the worktree mid-am so you can fix the patches? [y/N] ' >&2
+      read -r answer || answer="n"
+    fi
+    case "$answer" in
+      y | Y | yes | YES)
+        # Keep the worktree for resolution. 'exit' does not fire the RETURN cleanup
+        # trap so the tree survives; clear the trap anyway to make that explicit.
+        trap - RETURN
+        cat >&2 <<EOF
+
+The worktree is left mid-am at:
+  $into
+Fix the conflict there, then:
+  git -C "$into" am --continue     # after resolving + 'git add'
+or abort:
+  git -C "$into" am --abort
+Once the series applies, capture the fixed patches back into the repo with:
+  script/freebsd-patches export "$into" --base "$tag"
+EOF
+        exit 1
+        ;;
+      *)
+        git -C "$into" am --abort 2>/dev/null || true
+        # 'die' calls exit, which does not fire the RETURN trap, so clean up here.
+        git worktree remove --force "$into" 2>/dev/null || rm -rf "$into"
+        die "series does not apply onto $tag — worktree discarded, README left unchanged"
+        ;;
+    esac
+  fi
+
+  update_compat_field "$tag"
+
+  cat <<EOF
+
+OK: the FreeBSD series applies cleanly onto $tag.
+  recorded in: ${readme_file#$repo_root/}
+  next:        review 'git diff freebsd/README.md' and commit
+EOF
+}
+
 cmd_export() {
   local source="" base=""
   while [ $# -gt 0 ]; do
@@ -208,6 +314,7 @@ EOF
 
 case "${1:-}" in
   list)   shift; cmd_list "$@" ;;
+  check)  shift; cmd_check "$@" ;;
   apply)  shift; cmd_apply "$@" ;;
   export) shift; cmd_export "$@" ;;
   status) shift; cmd_status "$@" ;;
@@ -217,6 +324,8 @@ case "${1:-}" in
 freebsd-patches — maintain the FreeBSD patch series and apply it to upstream tags.
 
   list                          show the patch series
+  check [tag]                   verify the series applies onto an upstream tag
+                                (latest stable if omitted) and record it in the README
   apply <tag> [opts]            apply series onto an upstream tag (creates a worktree)
   install-server <tag> [opts]   build remote_server in that worktree + install to ~/.zed_server
   export <ref> [--base REF]     regenerate the series from a branch/worktree
