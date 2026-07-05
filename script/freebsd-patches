@@ -265,14 +265,18 @@ cmd_export() {
 # host under the versioned name the client looks for in ~/.zed_server.
 # A client built from source ('cargo run') is the 'dev' channel, where the name
 # is the fixed 'zed-remote-server-dev-build' — so the defaults need no version.
+# For stable/preview clients the FreeBSD 0007 patch strips the semver build
+# metadata (the '+<channel>.<sha>' suffix), so the name is a plain
+# 'zed-remote-server-<channel>-<version>' — no sha in the name.
 cmd_install_server() {
-  local tag="" channel="dev" version="" dest="$HOME/.zed_server" worktree=""
+  local tag="" channel="dev" version="" dest="$HOME/.zed_server" worktree="" rebuild=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --channel)  channel="$2"; shift 2 ;;
       --version)  version="$2"; shift 2 ;;
       --dest)     dest="$2"; shift 2 ;;
       --worktree) worktree="$2"; shift 2 ;;
+      --rebuild)  rebuild=1; shift ;;
       -*)         die "unknown flag: $1" ;;
       *)          [ -z "$tag" ] && tag="$1" || die "unexpected argument: $1"; shift ;;
     esac
@@ -288,12 +292,16 @@ cmd_install_server() {
     die "non-dev channel '$channel' needs --version (the client's app version)"
   fi
 
-  echo "==> building remote_server in $worktree"
-  ( cd "$worktree" && cargo build --release -p remote_server )
-
   local target_dir="${CARGO_TARGET_DIR:-$worktree/target}"
   local artifact="$target_dir/release/remote_server"
-  [ -f "$artifact" ] || die "build artifact not found: $artifact"
+
+  if [ "$rebuild" = 0 ] && [ -f "$artifact" ]; then
+    echo "==> reusing existing remote_server binary: $artifact"
+  else
+    echo "==> building remote_server in $worktree"
+    ( cd "$worktree" && cargo build --release -p remote_server )
+    [ -f "$artifact" ] || die "build artifact not found: $artifact"
+  fi
 
   local name="zed-remote-server-${channel}-${version}"
   mkdir -p "$dest"
@@ -332,7 +340,7 @@ freebsd-patches — maintain the FreeBSD patch series and apply it to upstream t
   status                        series size, base, active worktrees
 
 apply opts:           --into DIR   --tag NAME | --no-tag   --force
-install-server opts:  --channel dev   --version build   --dest DIR   --worktree DIR
+install-server opts:  --channel dev   --version build   --dest DIR   --worktree DIR   --rebuild
 EOF
     ;;
   *) die "unknown command: $1 (try --help)" ;;
